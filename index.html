@@ -328,6 +328,10 @@ table.num .no{font-weight:700;font-size:12px;color:var(--sub);white-space:nowrap
 .nick{display:inline-block;font-size:.5em;vertical-align:middle;border:2px solid var(--ink);padding:1px 8px;margin-left:6px;border-radius:999px}
 /* compact header: decorative hero and stats chart removed for usability */
 header.top{padding-block:20px 14px}
+#p-practice:not(.run) .desk{grid-template-columns:minmax(0,640px);margin:0 auto}
+#p-practice:not(.run) #stage{display:none}
+#p-practice.run #setpanel{display:none}
+#p-practice.run .desk{grid-template-columns:minmax(0,1fr)}
 </style>
 
 <div class="wrap">
@@ -358,7 +362,7 @@ header.top{padding-block:20px 14px}
 
   <section id="p-practice" hidden>
     <div class="desk">
-      <aside class="panel">
+      <aside class="panel" id="setpanel">
         <h3>テストの設定</h3>
         <div class="field"><span class="lbl">モード</span><div class="modes" id="modes"></div></div>
         <div class="field"><label for="range">範囲</label><select id="range"></select></div>
@@ -368,6 +372,7 @@ header.top{padding-block:20px 14px}
         <label class="toggle" style="margin-bottom:14px"><input type="checkbox" id="skipdone" checked> 習得済みの語は出さない</label>
         <label class="toggle" id="selfwrap" hidden style="margin-bottom:14px"><input type="checkbox" id="selfgrade"> 自分で丸付けする</label>
         <button class="btn primary wide" id="start">はじめる</button>
+        <p class="note" id="nopool" hidden style="color:var(--ng);margin-top:8px">この条件で出題できる語がありません。範囲・番号や「習得済みの語は出さない」を見直してください。</p>
         <div class="field" style="margin-top:20px"><span class="lbl">習得状況</span><div class="mastery" id="mastery"></div></div>
         <p class="note">正解すると習得レベル(●)が1つ上がり、3つそろうと「習得済み」になります。間違えると1つ下がります。記録はこのブラウザに保存されます。</p>
       </aside>
@@ -437,7 +442,7 @@ function show(id){
   $("#p-list").hidden=!LV; $("#p-practice").hidden=id!=="practice"; $("#p-page").hidden=!["jukugo","eisaku","wayaku","index"].includes(id);
   if(LV){rank="all";limit=60;$("#q").value="";buildRanks();renderList()}
   if(id==="index")renderIndex();
-  if(id==="practice"){renderMastery();if(!session)idle()}
+  if(id==="practice"){renderMastery()}
   if(["jukugo","eisaku","wayaku"].includes(id)){$("#doc").innerHTML=DATA.pages[id];if(id==="jukugo")addFilter()}
   try{history.replaceState(null,"","#"+id)}catch(e){}
   store.set("nw41-tab",id);
@@ -531,16 +536,17 @@ function renderMastery(){
 }
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
 let session=null;
-function idle(){$("#stage").innerHTML=`<div class="qcard"><div class="qk">PRACTICE</div><p class="qmean" style="font-family:var(--f-serif)">モードと範囲を選んで「はじめる」</p><p style="color:var(--sub);font-size:14px;max-width:46ch;margin:8px auto 0">おすすめは、STAGE 1 を「4択 英→日」で1周してから、間違えた語を「苦手な語」で「暗記 日→英」→「単語テスト 日→英」の順に回す方法です。記入式の「単語テスト」では「自分で丸付けする」も選べます。範囲は見出し番号で指定することもできます。</p></div>`}
+$("#stage").addEventListener("click",e=>{if(e.target.closest("#back")){session=null;$("#p-practice").classList.remove("run");$("#stage").innerHTML="";renderMastery()}});
 $("#start").onclick=()=>{
   store.set("nw41-range",$("#range").value);
+  $("#nopool").hidden=true;
   let p=pool($("#range").value); if($("#skipdone").checked)p=p.filter(w=>!mastered(w.id));
   if(mode==="cloze")p=p.filter(w=>w.jk||w.tk||stemRx(w.w).test(w.ex));
   store.set("nw41-ord",$("#ord").value);const n=+$("#num").value; let qs=$("#ord").value==="seq"?p.slice().sort((a,b)=>(a.no||0)-(b.no||0)):shuffle(p); if(n)qs=qs.slice(0,n);
-  if(!qs.length){$("#stage").innerHTML=`<div class="qcard"><p class="qmean">出題できる語がありません</p><p style="color:var(--sub)">この範囲はすべて習得済みです。「習得済みの語は出さない」を外すと、もう一度練習できます。</p></div>`;return}
-  session={qs,i:0,ok:0,miss:[]};ask();
+  if(!qs.length){$("#nopool").hidden=false;return}
+  $("#p-practice").classList.add("run");session={qs,i:0,ok:0,miss:[]};ask();
 };
-function head(){const s=session;return `<div class="progress"><span>${s.i+1} / ${s.qs.length}</span><span>正解 ${s.ok}</span></div><div class="pbar"><i style="width:${s.i/s.qs.length*100}%"></i></div>`}
+function head(){const s=session;return `<div class="progress"><span style="display:flex;gap:14px"><span>${s.i+1} / ${s.qs.length}</span><span>正解 ${s.ok}</span></span><button class="btn" id="back" style="padding:5px 12px;font-size:12.5px">設定に戻る</button></div><div class="pbar"><i style="width:${s.i/s.qs.length*100}%"></i></div>`}
 function distractors(w,key){const SRC=w.jk?JK:w.tk?TK:W;const same=SRC.filter(x=>x.id!==w.id&&x[key]!==w[key]);const pref=w.jk?same.filter(x=>x.sec===w.sec):same.filter(x=>x.pos.split("・")[0]===w.pos.split("・")[0]);return shuffle(pref.length>=3?pref:same).slice(0,3)}
 function jpMatch(a,t){const norm=x=>String(x).replace(/[\s、,，・;；()()〔〕\[\]]/g,"").toLowerCase();const A=norm(a),T=norm(t);return A.length>0&&(T.includes(A)||A.includes(T))}
 function selfMark(w,a,target){
@@ -598,7 +604,7 @@ function grade(good,isCard){
 }
 function finish(){
   const s=session;session=null;
-  $("#stage").innerHTML=`<div class="result"><div class="qk">RESULT</div><div class="score">${s.ok}<small> / ${s.qs.length} 問正解</small></div>${s.miss.length?`<div class="miss">${s.miss.map(w=>`<div><b>${esc(w.w)}</b><span>${esc(w.mean)}</span></div>`).join("")}</div><div class="actions" style="justify-content:flex-start"><button class="btn primary" id="retry">間違えた ${s.miss.length} 語をもう一度</button></div>`:`<p>全問正解です。次の範囲に進みましょう。</p>`}</div>`;
+  $("#stage").innerHTML=`<div class="result"><div class="qk">RESULT</div><div class="score">${s.ok}<small> / ${s.qs.length} 問正解</small></div>${s.miss.length?`<div class="miss">${s.miss.map(w=>`<div><b>${esc(w.w)}</b><span>${esc(w.mean)}</span></div>`).join("")}</div><div class="actions" style="justify-content:flex-start"><button class="btn primary" id="retry">間違えた ${s.miss.length} 語をもう一度</button><button class="btn" id="back">設定に戻る</button></div>`:`<p>全問正解です。次の範囲に進みましょう。</p>`}</div>`;
   const r=$("#retry");if(r)r.onclick=()=>{session={qs:shuffle(s.miss),i:0,ok:0,miss:[]};ask()};
 }
 document.addEventListener("keydown",e=>{
